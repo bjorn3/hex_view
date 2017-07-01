@@ -19,10 +19,10 @@ struct Segment {
     childs: HashMap<(usize, usize), Segment>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 enum SegmentKind {
     Main,
-    //Header,
+    Header,
     Block,
     Line,
 }
@@ -37,11 +37,8 @@ enum Ty {
 }
 
 impl Ty {
-    fn is_custom_repr(&self) -> bool {
-        match *self {
-            Ty::BeNum | Ty::LeNum | Ty::Custom(_) => true,
-            _ => false,
-        }
+    fn custom(s: &str) -> Ty {
+        Ty::Custom(s.to_string())
     }
 }
 
@@ -51,6 +48,22 @@ struct StyleBuilder<'a> {
 }
 
 impl<'a> StyleBuilder<'a> {
+    pub fn header(&mut self, begin: usize, end: usize, ty: Ty) -> StyleBuilder {
+        self.seg
+            .childs
+            .insert((begin, end),
+                    Segment {
+                        ty: ty,
+                        kind: SegmentKind::Header,
+                        childs: HashMap::new(),
+                    });
+        let seg = self.seg.childs.get_mut(&(begin, end)).unwrap();
+        StyleBuilder {
+            buf: &self.buf[begin..end],
+            seg: seg,
+        }
+    }
+
     pub fn block(&mut self, begin: usize, end: usize, ty: Ty) -> StyleBuilder {
         self.seg
             .childs
@@ -111,54 +124,54 @@ impl TermPrinter {
         }
     }
 
+    fn make_ascii(c: char) -> char {
+        match c {
+            'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | ';' | '@' | '/' | '\\' | '|' | '?' |
+            '!' | '+' | '*' | '.' | ',' | ' ' | '-' | '_' | '\'' | '"' | '=' | '(' | ')' |
+            '{' | '}' | '[' | ']' | '&' | '>' | '<' => c,
+            '\n' => '␊',
+            '\r' => '␍',
+            '\0' => '␀',
+            //c => c,
+            _ => '�',
+        }
+    }
+
     pub fn print(mut self) {
-        fn print_segment(buf: &[u8], s: Segment) {
-            fn make_ascii(c: char) -> char {
-                match c {
-                    'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | ';' | '@' | '/' | '\\' | '|' |
-                    '?' | '!' | '+' | '*' | '.' | ',' | ' ' | '-' | '_' | '\'' | '"' | '=' |
-                    '(' | ')' | '{' | '}' | '[' | ']' | '&' | '>' | '<' => c,
-                    '\n' => '␊',
-                    '\r' => '␍',
-                    '\0' => '␀',
-                    //c => c,
-                    _ => '�',
-                }
-            }
+        fn print_segment(buf: &[u8], s: Segment, outer_kind: SegmentKind) {
             use std::cmp::Ord;
 
             if s.childs.is_empty() {
-                if !s.ty.is_custom_repr() {
-                    for c in buf.iter().chunks(32).into_iter() {
-                        let chunk = c.cloned().collect::<Vec<u8>>();
-                        TermPrinter::print_hex_line(&chunk);
-
-                        match s.ty {
-                            Ty::Ascii => {
-                                println!("  |{}{}{}|",
-                                         Fg(Magenta),
-                                         chunk
-                                             .iter()
-                                             .map(|&c| make_ascii(c as char))
-                                             .pad_using(32, |_| '.')
-                                             .collect::<String>(),
-                                         Fg(Reset))
-                            }
-                            Ty::Binary => println!(),
-                            _ => unreachable!(),
-                        }
+                for c in buf.iter().chunks(32).into_iter() {
+                    let chunk = c.cloned().collect::<Vec<u8>>();
+                    match outer_kind {
+                        SegmentKind::Header => print!("H "),
+                        SegmentKind::Block => print!("B "),
+                        _ => print!("  "),
                     }
-                } else {
-                    TermPrinter::print_hex_line(buf);
 
+                    TermPrinter::print_hex_line(&chunk);
+
+                    // Print extra info
                     match s.ty {
+                        Ty::Ascii => {
+                            println!("  |{}{}{}|",
+                                     Fg(Magenta),
+                                     chunk
+                                         .iter()
+                                         .map(|&c| TermPrinter::make_ascii(c as char))
+                                         .pad_using(32, |_| '.')
+                                         .collect::<String>(),
+                                     Fg(Reset))
+                        }
+                        Ty::Binary => println!(),
                         Ty::BeNum => {
                             let num = match buf.len() {
                                 1 => buf[0] as u64,
                                 2 => BigEndian::read_u16(buf) as u64,
                                 4 => BigEndian::read_u32(buf) as u64,
                                 8 => BigEndian::read_u64(buf) as u64,
-                                len => panic!("Invalid buf len for BeNum segment"),
+                                len => panic!("Invalid buf len for BeNum segment: {}", len),
                             };
                             println!("  : {}{}{}", Fg(Cyan), num, Fg(Reset));
                         }
@@ -168,14 +181,15 @@ impl TermPrinter {
                                 2 => LittleEndian::read_u16(buf) as u64,
                                 4 => LittleEndian::read_u32(buf) as u64,
                                 8 => LittleEndian::read_u64(buf) as u64,
-                                len => panic!("Invalid buf len for LeNum segment"),
+                                len => panic!("Invalid buf len for LeNum segment: {}", len),
                             };
                             println!("  : {}{}{}", Fg(Cyan), num, Fg(Reset));
                         }
-                        Ty::Custom(custom) => {
-                            println!("  : {}{}{}", Fg(Yellow), custom, Fg(Reset));
+                        Ty::Custom(ref custom) => {
+                            println!("  ; {}{}{}", Fg(Yellow), custom, Fg(Reset));
                         }
                         _ => unreachable!(),
+
                     }
                 }
             } else {
@@ -183,9 +197,17 @@ impl TermPrinter {
                 segments.sort_by(|a, b| (a.0).0.cmp(&(b.0).0));
                 for ((begin, end), seg) in segments.into_iter() {
                     let buf = &buf[begin..end];
-                    print_segment(buf, seg.clone());
+                    print_segment(buf, seg.clone(), match (outer_kind, seg.kind) {
+                        (SegmentKind::Header, _) => SegmentKind::Header,
+                        (_, SegmentKind::Header) => SegmentKind::Header,
+                        (SegmentKind::Block, _) => SegmentKind::Block,
+                        (_, SegmentKind::Block) => SegmentKind::Block,
+                        (SegmentKind::Line, _) => unreachable!(),
+                        (_, SegmentKind::Line) => SegmentKind::Line,
+                        _ => unreachable!(),
+                    });
                     match seg.kind {
-                        SegmentKind::Block => println!(),
+                        SegmentKind::Header | SegmentKind::Block => println!(),
                         SegmentKind::Line => {}
                         SegmentKind::Main => panic!(),
                     }
@@ -199,7 +221,8 @@ impl TermPrinter {
                                             ty: Ty::Ascii,
                                             kind: SegmentKind::Main,
                                             childs: HashMap::new(),
-                                        }));
+                                        }),
+                      SegmentKind::Main);
     }
 }
 
@@ -223,9 +246,29 @@ fn main() {
 }
 
 fn pcapng_styler(mut builder: StyleBuilder) {
-    let mut begin = 0;
+    let header_len = LittleEndian::read_u32(&builder.buf[4..8]);
+    let header_len = header_len +
+                     match header_len % 4 {
+                         0 => 0,
+                         1 => 3,
+                         2 => 2,
+                         3 => 1,
+                         _ => unreachable!(),
+                     };
+    println!("Header len: {}", header_len);
+    pcapng_block_styler(builder.header(0, header_len as usize, Ty::Ascii));
+
+    let mut begin = header_len as usize;
     loop {
         let len = LittleEndian::read_u32(&builder.buf[begin + 4..begin + 8]);
+        let len = len +
+                  match len % 4 {
+                      0 => 0,
+                      1 => 3,
+                      2 => 2,
+                      3 => 1,
+                      _ => unreachable!(),
+                  };
         println!("Len: {}", len);
         pcapng_block_styler(builder.block(begin, begin + len as usize, Ty::Ascii));
 
@@ -237,9 +280,15 @@ fn pcapng_styler(mut builder: StyleBuilder) {
 }
 
 fn pcapng_block_styler(mut builder: StyleBuilder) {
+    let custom = Ty::custom;
     let type_ty = match LittleEndian::read_u32(&builder.buf[0..4]) {
-        0x0A0D0D0A => Ty::Custom("header".to_string()),
-        0x00000001 => Ty::Custom("iface descr".to_string()),
+        0x0A0D0D0A => custom("header"),
+        0x1 => custom("iface descr"),
+        0x2 => custom("packet"),
+        0x3 => custom("simple packet"),
+        0x4 => custom("name resolution"),
+        0x5 => custom("iface statistics"),
+        0x6 => custom("enhanced block"),
         _ => Ty::LeNum,
     };
     builder.line(0, 4, type_ty);
