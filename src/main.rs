@@ -4,7 +4,7 @@ extern crate termion;
 
 extern crate hex_view;
 
-use byteorder::{BigEndian, LittleEndian, ByteOrder};
+use byteorder::{LittleEndian, ByteOrder};
 
 use hex_view::*;
 
@@ -17,13 +17,13 @@ fn main() {
         .expect("File not found");
     file.read_to_end(&mut buf).unwrap();
 
-    //let mut term_printer = TermPrinter::new(buf);
-    //pcapng_styler(term_printer.style_builder());
-    //term_printer.print();
-    
-    let mut html_printer = HtmlPrinter::new(buf);
-    pcapng_styler(html_printer.style_builder());
-    html_printer.print();
+    let mut term_printer = TermPrinter::new(buf);
+    pcapng_styler(term_printer.style_builder());
+    term_printer.print();
+
+    //let mut html_printer = HtmlPrinter::new(buf);
+    //pcapng_styler(html_printer.style_builder());
+    //html_printer.print();
 }
 
 fn pcapng_styler(mut builder: StyleBuilder) {
@@ -37,7 +37,7 @@ fn pcapng_styler(mut builder: StyleBuilder) {
             _ => unreachable!(),
         };
     //println!("Header len: {}", header_len);
-    pcapng_block_styler(builder.header(0, header_len as usize, Ty::Ascii, "header"));
+    pcapng_block_styler(builder.header(0, header_len as usize, Ty::Ascii));
 
     let mut begin = header_len as usize;
     loop {
@@ -51,12 +51,7 @@ fn pcapng_styler(mut builder: StyleBuilder) {
                 _ => unreachable!(),
             };
         //println!("Len: {}", len);
-        pcapng_block_styler(builder.block(
-            begin,
-            begin + len as usize,
-            Ty::Ascii,
-            "block",
-        ));
+        pcapng_block_styler(builder.block(begin, begin + len as usize, Ty::Ascii));
 
         begin += len as usize;
         if begin >= builder.buf.len() {
@@ -84,6 +79,7 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
     builder.line(builder.buf.len() - 4, builder.buf.len(), Ty::LeNum, "size");
 }
 
+#[allow(dead_code)]
 fn plain_text_styler(mut builder: StyleBuilder) {
     let mut buf_iter = builder.buf.iter().peekable();
     let mut begin = 0;

@@ -10,17 +10,16 @@ use termion::color::*;
 #[derive(Clone)]
 struct Segment {
     ty: Ty,
-    tag: String,
     kind: SegmentKind,
     childs: HashMap<(usize, usize), Segment>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub enum SegmentKind {
     Main,
     Header,
     Block,
-    Line,
+    Line { tag: String },
 }
 
 #[derive(Clone)]
@@ -44,18 +43,11 @@ pub struct StyleBuilder<'a> {
 }
 
 impl<'a> StyleBuilder<'a> {
-    pub fn header<S: Into<String>>(
-        &mut self,
-        begin: usize,
-        end: usize,
-        ty: Ty,
-        tag: S,
-    ) -> StyleBuilder {
+    pub fn header(&mut self, begin: usize, end: usize, ty: Ty) -> StyleBuilder {
         self.seg.childs.insert(
             (begin, end),
             Segment {
                 ty: ty,
-                tag: tag.into(),
                 kind: SegmentKind::Header,
                 childs: HashMap::new(),
             },
@@ -67,18 +59,11 @@ impl<'a> StyleBuilder<'a> {
         }
     }
 
-    pub fn block<S: Into<String>>(
-        &mut self,
-        begin: usize,
-        end: usize,
-        ty: Ty,
-        tag: S,
-    ) -> StyleBuilder {
+    pub fn block(&mut self, begin: usize, end: usize, ty: Ty) -> StyleBuilder {
         self.seg.childs.insert(
             (begin, end),
             Segment {
                 ty: ty,
-                tag: tag.into(),
                 kind: SegmentKind::Block,
                 childs: HashMap::new(),
             },
@@ -95,11 +80,33 @@ impl<'a> StyleBuilder<'a> {
             (begin, end),
             Segment {
                 ty: ty,
-                tag: tag.into(),
-                kind: SegmentKind::Line,
+                kind: SegmentKind::Line { tag: tag.into() },
                 childs: HashMap::new(),
             },
         );
+    }
+}
+
+fn make_ascii(c: char) -> char {
+    match c {
+        'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | ';' | '@' | '/' | '\\' | '|' | '?' | '!' |
+        '+' | '*' | '.' | ',' | ' ' | '-' | '_' | '\'' | '"' | '=' | '(' | ')' | '{' | '}' |
+        '[' | ']' | '&' | '>' | '<' => c,
+        '\n' => '␊',
+        '\r' => '␍',
+        '\0' => '␀',
+        //c => c,
+        _ => '�',
+    }
+}
+
+fn read_num<E: ByteOrder>(buf: &[u8]) -> u64 {
+    match buf.len() {
+        1 => buf[0] as u64,
+        2 => E::read_u16(buf) as u64,
+        4 => E::read_u32(buf) as u64,
+        8 => E::read_u64(buf) as u64,
+        len => panic!("Invalid buf len for **Num segment: {}", len),
     }
 }
 
@@ -114,7 +121,6 @@ impl TermPrinter {
             buf: buf,
             main: Segment {
                 ty: Ty::Ascii,
-                tag: "".to_string(),
                 kind: SegmentKind::Main,
                 childs: HashMap::new(),
             },
@@ -125,19 +131,6 @@ impl TermPrinter {
         StyleBuilder {
             buf: &*self.buf,
             seg: &mut self.main,
-        }
-    }
-
-    fn make_ascii(c: char) -> char {
-        match c {
-            'a'...'z' | 'A'...'Z' | '0'...'9' | ':' | ';' | '@' | '/' | '\\' | '|' | '?' |
-            '!' | '+' | '*' | '.' | ',' | ' ' | '-' | '_' | '\'' | '"' | '=' | '(' | ')' |
-            '{' | '}' | '[' | ']' | '&' | '>' | '<' => c,
-            '\n' => '␊',
-            '\r' => '␍',
-            '\0' => '␀',
-            //c => c,
-            _ => '�',
         }
     }
 
@@ -169,7 +162,7 @@ impl TermPrinter {
             Ty::Ascii => {
                 let text_iter = chunk
                     .iter()
-                    .map(|&c| TermPrinter::make_ascii(c as char))
+                    .map(|&c| make_ascii(c as char))
                     .pad_using(32, |_| '.')
                     .enumerate();
                 let mut text = String::with_capacity(40);
@@ -182,51 +175,43 @@ impl TermPrinter {
                         text.push(' ');
                     }
                 }
-                println!("|{}|", text)
+                print!("|{}|", text)
             }
-            Ty::Binary => println!(),
+            Ty::Binary => {}
             Ty::BeNum => {
-                let num = match chunk.len() {
-                    1 => chunk[0] as u64,
-                    2 => BigEndian::read_u16(chunk) as u64,
-                    4 => BigEndian::read_u32(chunk) as u64,
-                    8 => BigEndian::read_u64(chunk) as u64,
-                    len => panic!("Invalid buf len for BeNum segment: {}", len),
-                };
-                println!(": {}", num);
+                print!(": {}", read_num::<BigEndian>(chunk));
             }
             Ty::LeNum => {
-                let num = match chunk.len() {
-                    1 => chunk[0] as u64,
-                    2 => LittleEndian::read_u16(chunk) as u64,
-                    4 => LittleEndian::read_u32(chunk) as u64,
-                    8 => LittleEndian::read_u64(chunk) as u64,
-                    len => panic!("Invalid buf len for LeNum segment: {}", len),
-                };
-                println!(": {}", num);
+                print!(": {}", read_num::<LittleEndian>(chunk));
             }
             Ty::Custom(ref custom) => {
-                println!("; {}", custom);
+                print!("; {}", custom);
             }
         }
     }
 
     fn print_segment(buf: &[u8], s: Segment) {
+        fn print_color_for_ty(ty: &Ty) {
+            match *ty {
+                Ty::Ascii => print!("{}", Fg(Magenta)),
+                Ty::Binary => print!("{}", Fg(Reset)),
+                Ty::BeNum | Ty::LeNum => print!("{}", Fg(Cyan)),
+                Ty::Custom(_) => print!("{}", Fg(Yellow)),
+            }
+        }
         use std::cmp::Ord;
 
         if s.childs.is_empty() {
             for c in buf.iter().chunks(32).into_iter() {
                 let chunk = c.cloned().collect::<Vec<u8>>();
-                match s.ty {
-                    Ty::Ascii => print!("{}", Fg(Magenta)),
-                    Ty::Binary => print!("{}", Fg(Reset)),
-                    Ty::BeNum | Ty::LeNum => print!("{}", Fg(Cyan)),
-                    Ty::Custom(_) => print!("{}", Fg(Yellow)),
-                }
+                print_color_for_ty(&s.ty);
                 TermPrinter::print_hex_line(&chunk);
-                print!("  {:>8} ", s.tag);
+                match s.kind {
+                    SegmentKind::Line { ref tag } => print!("  {:>8} ", tag),
+                    _ => print!("          "),
+                }
                 TermPrinter::print_extras(&chunk, &s);
-                print!("{}", Fg(Reset));
+                println!("{}", Fg(Reset));
             }
         } else {
             let mut segments = s.childs.into_iter().collect::<Vec<_>>();
@@ -237,30 +222,20 @@ impl TermPrinter {
                 TermPrinter::print_segment(buf, seg.clone());
                 match seg.kind {
                     SegmentKind::Header | SegmentKind::Block => println!(),
-                    SegmentKind::Line => {}
+                    SegmentKind::Line { .. } => {}
                     SegmentKind::Main => panic!(),
                 }
             }
         }
     }
 
-    pub fn print(mut self) {
-        TermPrinter::print_segment(
-            &self.buf,
-            std::mem::replace(
-                &mut self.main,
-                Segment {
-                    ty: Ty::Ascii,
-                    tag: "".to_string(),
-                    kind: SegmentKind::Main,
-                    childs: HashMap::new(),
-                },
-            ),
-        );
+    pub fn print(self) {
+        let TermPrinter { buf, main } = self;
+        TermPrinter::print_segment(&buf, main);
     }
 }
 
-pub struct HtmlPrinter {
+/*pub struct HtmlPrinter {
     buf: Vec<u8>,
     main: Segment,
 }
@@ -440,4 +415,4 @@ body {{
         println!("</body>
         </html>");
     }
-}
+}*/
