@@ -62,7 +62,8 @@ fn pcapng_styler(mut builder: StyleBuilder) {
 
 fn pcapng_block_styler(mut builder: StyleBuilder) {
     let custom = Ty::custom;
-    let type_ty = match LittleEndian::read_u32(&builder.buf[0..4]) {
+    let type_id = LittleEndian::read_u32(&builder.buf[0..4]);
+    let type_ty = match type_id {
         0x0A0D0D0A => custom("header"),
         0x1 => custom("iface descr"),
         0x2 => custom("packet"),
@@ -74,7 +75,15 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
     };
     builder.line(0, 4, type_ty, "type");
     builder.line(4, 8, Ty::LeNum, "size");
-    builder.line(8, builder.buf.len() - 4, Ty::Ascii, "content");
+    if type_id != 0x6 {
+        builder.line(8, builder.buf.len() - 4, Ty::Ascii, "content");
+    } else {
+        builder.line(8, 12, Ty::LeNum, "iface id");
+        builder.line(12, 20, Ty::LeNum, "timestamp");
+        builder.line(20, 24, Ty::LeNum, "captured len");
+        builder.line(24, 28, Ty::LeNum, "original len");
+        builder.line(28, builder.buf.len() - 4, Ty::Ascii, "content");
+    }
     //plain_text_styler(builder.block(8, builder.buf.len() - 4, Ty::Ascii));
     builder.line(builder.buf.len() - 4, builder.buf.len(), Ty::LeNum, "size");
 }
