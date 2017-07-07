@@ -4,7 +4,7 @@ extern crate termion;
 
 extern crate hex_view;
 
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{BigEndian, LittleEndian, ByteOrder};
 
 use hex_view::*;
 
@@ -80,9 +80,35 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
     } else {
         builder.line(8, 12, Ty::LeNum, "iface id");
         builder.line(12, 20, Ty::LeNum, "timestamp");
-        builder.line(20, 24, Ty::LeNum, "captured len");
-        builder.line(24, 28, Ty::LeNum, "original len");
-        builder.line(28, builder.buf.len() - 4, Ty::Ascii, "content");
+        builder.line(20, 24, Ty::LeNum, "cap len");
+        builder.line(24, 28, Ty::LeNum, "orig len");
+        builder.line(28, 34, Ty::Binary, "dest mac");
+        builder.line(34, 40, Ty::Binary, "src mac");
+        let eth_type_num = BigEndian::read_u16(&builder.buf[40..42]);
+        let eth_type = match eth_type_num {
+            0x0800 => "IPv4",
+            0x0806 => "ARP",
+            0x0842 => "Wake-on-LAN",
+            0x22F3 => "IETF TRILL Protocol",
+            0x22EA => "Stream Reservation Protocol",
+            0x6003 => "DECnet phase IV",
+            0x86DD => "IPv6",
+            _ => ""
+        };
+        builder.line(40, 42, Ty::custom(eth_type), "eth type");
+        
+        if eth_type_num != 0x0800 {
+            builder.line(42, builder.buf.len() - 4, Ty::Ascii, "content");
+        } else {
+            builder.line(42, 43, Ty::Binary, "version + IHL");
+            builder.line(43, 44, Ty::Binary, "DSCP + ECN");
+            builder.line(44, 46, Ty::BeNum, "total length");
+            builder.line(46, 48, Ty::Binary, "identification");
+            builder.line(48, 50, Ty::Binary, "flags + fragment offset");
+            builder.line(50, 51, Ty::BeNum, "TTL");
+            builder.line(51, 52, Ty::BeNum, "Proto");
+            builder.line(52, builder.buf.len() - 4, Ty::Ascii, "content");
+        }
     }
     //plain_text_styler(builder.block(8, builder.buf.len() - 4, Ty::Ascii));
     builder.line(builder.buf.len() - 4, builder.buf.len(), Ty::LeNum, "size");

@@ -207,7 +207,7 @@ impl TermPrinter {
                 print_color_for_ty(&s.ty);
                 TermPrinter::print_hex_line(&chunk);
                 match s.kind {
-                    SegmentKind::Line { ref tag } => print!("  {:>8} ", tag),
+                    SegmentKind::Line { ref tag } => print!("  {:>9} ", tag),
                     _ => print!("          "),
                 }
                 TermPrinter::print_extras(&chunk, &s);
