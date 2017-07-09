@@ -12,6 +12,7 @@ struct Segment {
     ty: Ty,
     kind: SegmentKind,
     childs: HashMap<(usize, usize), Segment>,
+    color: Color,
 }
 
 #[derive(Clone)]
@@ -37,12 +38,27 @@ impl Ty {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum Color {
+    Blue,
+    Cyan,
+    Green,
+    Magenta,
+    Red,
+    Yellow,
+    White,
+}
+
 pub struct StyleBuilder<'a> {
     pub buf: &'a [u8],
     seg: &'a mut Segment,
+    part_color: Color,
 }
 
 impl<'a> StyleBuilder<'a> {
+    pub fn set_color(&mut self, color: Color){
+        self.part_color = color;
+    }
     pub fn header(&mut self, begin: usize, end: usize, ty: Ty) -> StyleBuilder {
         self.seg.childs.insert(
             (begin, end),
@@ -50,12 +66,14 @@ impl<'a> StyleBuilder<'a> {
                 ty: ty,
                 kind: SegmentKind::Header,
                 childs: HashMap::new(),
+                color: self.part_color,
             },
         );
         let seg = self.seg.childs.get_mut(&(begin, end)).unwrap();
         StyleBuilder {
             buf: &self.buf[begin..end],
             seg: seg,
+            part_color: Color::White,
         }
     }
 
@@ -66,12 +84,14 @@ impl<'a> StyleBuilder<'a> {
                 ty: ty,
                 kind: SegmentKind::Block,
                 childs: HashMap::new(),
+                color: self.part_color,
             },
         );
         let seg = self.seg.childs.get_mut(&(begin, end)).unwrap();
         StyleBuilder {
             buf: &self.buf[begin..end],
             seg: seg,
+            part_color: Color::White,
         }
     }
 
@@ -82,6 +102,7 @@ impl<'a> StyleBuilder<'a> {
                 ty: ty,
                 kind: SegmentKind::Line { tag: tag.into() },
                 childs: HashMap::new(),
+                color: self.part_color,
             },
         );
     }
@@ -123,6 +144,7 @@ impl TermPrinter {
                 ty: Ty::Ascii,
                 kind: SegmentKind::Main,
                 childs: HashMap::new(),
+                color: Color::White,
             },
         }
     }
@@ -131,6 +153,7 @@ impl TermPrinter {
         StyleBuilder {
             buf: &*self.buf,
             seg: &mut self.main,
+            part_color: Color::White,
         }
     }
 
@@ -204,10 +227,19 @@ impl TermPrinter {
         if s.childs.is_empty() {
             for c in buf.iter().chunks(32).into_iter() {
                 let chunk = c.cloned().collect::<Vec<u8>>();
-                print_color_for_ty(&s.ty);
+                //print_color_for_ty(&s.ty);
+                match s.color {
+                    Color::Blue => print!("{}", Fg(Blue)),
+                    Color::Cyan => print!("{}", Fg(Cyan)),
+                    Color::Green => print!("{}", Fg(Green)),
+                    Color::Magenta => print!("{}", Fg(Magenta)),
+                    Color::Red => print!("{}", Fg(Red)),
+                    Color::Yellow => print!("{}", Fg(Yellow)),
+                    Color::White => print!("{}", Fg(White)),
+                }
                 TermPrinter::print_hex_line(&chunk);
                 match s.kind {
-                    SegmentKind::Line { ref tag } => print!("  {:>9} ", tag),
+                    SegmentKind::Line { ref tag } => print!("  {:>12} ", tag),
                     _ => print!("          "),
                 }
                 TermPrinter::print_extras(&chunk, &s);
