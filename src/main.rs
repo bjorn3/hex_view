@@ -82,19 +82,18 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
         0x6 => custom("enhanced block"),
         _ => Ty::LeNum,
     };
-    builder.line(0, 4, type_ty, "type");
-    builder.line(4, 8, Ty::LeNum, "size");
+    builder.line(4, type_ty, "type");
+    builder.line(4, Ty::LeNum, "size");
 
 
     builder.set_color(White);
-    builder.line(buf.len() - 4, buf.len(), Ty::LeNum, "size");
 
     match type_id {
         0x1 => {
             builder.set_color(Green);
-            builder.line(8, 10, Ty::LeNum, "link type");
-            builder.line(10, 12, Ty::Binary, "reserved");
-            builder.line(12, 16, Ty::LeNum, "snap num");
+            builder.line(2, Ty::LeNum, "link type");
+            builder.line(2, Ty::Binary, "reserved");
+            builder.line(4, Ty::LeNum, "snap num");
             builder.set_color(Yellow);
 
             /*let mut offset = 16 as usize;
@@ -133,22 +132,21 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                 }
                 //break;
             }*/
-            builder.line(16, buf.len() - 4, Ty::Ascii, "options");
+            builder.line_until(buf.len() - 4, Ty::Ascii, "options");
         }
         0x6 => {
             builder.set_color(Magenta);
-            builder.line(8, 12, Ty::LeNum, "iface id");
+            builder.line(4, Ty::LeNum, "iface id");
             let timestamp = LittleEndian::read_u64(&buf[12..20]);
             println!("{}", timestamp);
-            builder.line(12,
-                         20,
+            builder.line(8,
                          Ty::Custom(/*chrono::Utc.timestamp(timestamp as i64, 0)).to_rfc2822()*/
                                     "".to_string()),
                          "timestamp");
-            builder.line(20, 24, Ty::LeNum, "cap len");
-            builder.line(24, 28, Ty::LeNum, "orig len");
-            builder.line(28, 34, Ty::Binary, "dest mac");
-            builder.line(34, 40, Ty::Binary, "src mac");
+            builder.line(4, Ty::LeNum, "cap len");
+            builder.line(4, Ty::LeNum, "orig len");
+            builder.line(6, Ty::Binary, "dest mac");
+            builder.line(6, Ty::Binary, "src mac");
             let eth_type_num = BigEndian::read_u16(&buf[40..42]);
             let eth_type = match eth_type_num {
                 0x0800 => "IPv4",
@@ -160,34 +158,32 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                 0x86DD => "IPv6",
                 _ => "",
             };
-            builder.line(40, 42, Ty::custom(eth_type), "eth type");
+            builder.line(2, Ty::custom(eth_type), "eth type");
 
             if eth_type_num == 0x0800 {
                 builder.set_color(Cyan);
-                builder.line(42, 43, Ty::Binary, "version + IHL");
-                builder.line(43, 44, Ty::Binary, "DSCP + ECN");
-                builder.line(44, 46, Ty::BeNum, "total length");
-                builder.line(46, 48, Ty::Binary, "identification");
-                builder.line(48, 50, Ty::Binary, "flags + frag offset");
-                builder.line(50, 51, Ty::BeNum, "TTL");
+                builder.line(1, Ty::Binary, "version + IHL");
+                builder.line(1, Ty::Binary, "DSCP + ECN");
+                builder.line(2, Ty::BeNum, "total length");
+                builder.line(2, Ty::Binary, "identification");
+                builder.line(2, Ty::Binary, "flags + frag offset");
+                builder.line(1, Ty::BeNum, "TTL");
                 let proto_num = buf[51];
                 let proto = match proto_num {
                     0x06 => "TCP",
                     0x11 => "UDP",
                     _ => "",
                 };
-                builder.line(51, 52, Ty::custom(proto), "Proto");
-                builder.line(52, 54, Ty::Binary, "Header Checksum");
-                builder.line(54,
-                             58,
+                builder.line(1, Ty::custom(proto), "Proto");
+                builder.line(2, Ty::Binary, "Header Checksum");
+                builder.line(4,
                              Ty::Custom(format!("{}.{}.{}.{}",
                                                 buf[54],
                                                 buf[55],
                                                 buf[56],
                                                 buf[57])),
                              "src IP");
-                builder.line(58,
-                             62,
+                builder.line(4,
                              Ty::Custom(format!("{}.{}.{}.{}",
                                                 buf[58],
                                                 buf[59],
@@ -197,33 +193,35 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                 match proto_num {
                     0x06 => {
                         builder.set_color(Yellow);
-                        builder.line(62, 64, Ty::BeNum, "src port");
-                        builder.line(64, 66, Ty::BeNum, "dst port");
-                        builder.line(66, 70, Ty::BeNum, "seq num");
-                        builder.line(70, 74, Ty::BeNum, "ack num");
-                        builder.line(74, 78, Ty::Binary, "data offset + opts");
-                        builder.line(78, 82, Ty::BeNum, "window size");
-                        builder.line(82, 84, Ty::Binary, "checksum");
-                        builder.line(84, 86, Ty::Binary, "urgent ptr");
+                        builder.line(2, Ty::BeNum, "src port");
+                        builder.line(2, Ty::BeNum, "dst port");
+                        builder.line(4, Ty::BeNum, "seq num");
+                        builder.line(4, Ty::BeNum, "ack num");
+                        builder.line(4, Ty::Binary, "data offset + opts");
+                        builder.line(4, Ty::BeNum, "window size");
+                        builder.line(2, Ty::Binary, "checksum");
+                        builder.line(2, Ty::Binary, "urgent ptr");
 
                         builder.set_color(White);
-                        builder.line(86, buf.len() - 4, Ty::Ascii, "content");
+                        builder.line_until(buf.len() - 4, Ty::Ascii, "content");
                     }
                     _ => {
                         builder.set_color(White);
-                        builder.line(62, buf.len() - 4, Ty::Ascii, "content")
+                        builder.line_until(buf.len() - 4, Ty::Ascii, "content")
                     }
                 }
             } else {
                 builder.set_color(White);
-                builder.line(42, buf.len() - 4, Ty::Ascii, "content");
+                builder.line_until(buf.len() - 4, Ty::Ascii, "content");
             }
         }
-        _ => builder.line(8, buf.len() - 4, Ty::Ascii, "content"),
+        _ => builder.line_until(buf.len() - 4, Ty::Ascii, "content"),
     }
+
+    builder.line(4, Ty::LeNum, "size");
 }
 
-#[allow(dead_code)]
+/*#[allow(dead_code)]
 fn plain_text_styler(mut builder: StyleBuilder) {
     let mut buf_iter = builder.buf.iter().peekable();
     let mut begin = 0;
@@ -241,4 +239,4 @@ fn plain_text_styler(mut builder: StyleBuilder) {
             break;
         }
     }
-}
+}*/

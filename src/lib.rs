@@ -52,6 +52,7 @@ pub struct StyleBuilder<'a> {
     pub buf: &'a [u8],
     childs: &'a mut HashMap<(usize, usize), Segment>,
     part_color: Color,
+    index: usize,
 }
 
 impl<'a> StyleBuilder<'a> {
@@ -72,6 +73,7 @@ impl<'a> StyleBuilder<'a> {
             buf: &self.buf[begin..end],
             childs: &mut seg.childs,
             part_color: Color::White,
+            index: 0,
         }
     }
 
@@ -89,18 +91,34 @@ impl<'a> StyleBuilder<'a> {
             buf: &self.buf[begin..end],
             childs: &mut seg.childs,
             part_color: Color::White,
+            index: 0,
         }
     }
-
-    pub fn line<S: Into<String>>(&mut self, begin: usize, end: usize, ty: Ty, tag: S) {
+    
+    pub fn index(&self) -> usize { self.index }
+    
+    pub fn line<S: Into<String>>(&mut self, len: usize, ty: Ty, tag: S) {
         self.childs.insert(
-            (begin, end),
+            (self.index, self.index + len),
             Segment {
                 ty: ty,
                 kind: SegmentKind::Line { tag: tag.into(), color: self.part_color },
                 childs: HashMap::new(),
             },
         );
+        self.index += len;
+    }
+    
+    pub fn line_until<S: Into<String>>(&mut self, end: usize, ty: Ty, tag: S) {
+        self.childs.insert(
+            (self.index, end),
+            Segment {
+                ty: ty,
+                kind: SegmentKind::Line { tag: tag.into(), color: self.part_color },
+                childs: HashMap::new(),
+            },
+        );
+        self.index = end;
     }
 }
 
@@ -150,6 +168,7 @@ impl TermPrinter {
             buf: &*self.buf,
             childs: &mut self.main.childs,
             part_color: Color::White,
+            index: 0,
         }
     }
 
