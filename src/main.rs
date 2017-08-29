@@ -97,7 +97,7 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
             builder.line(12, 16, Ty::LeNum, "snap num");
             builder.set_color(Yellow);
 
-            let mut offset = 16 as usize;
+            /*let mut offset = 16 as usize;
             for i in 0.. {
                 let opt1_type_num = LittleEndian::read_u16(&buf[offset..offset + 2]);
                 let opt1_type = match opt1_type_num {
@@ -132,8 +132,8 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                     break;
                 }
                 //break;
-            }
-            builder.line(offset, buf.len() - 4, Ty::Ascii, "options");
+            }*/
+            builder.line(16, buf.len() - 4, Ty::Ascii, "options");
         }
         0x6 => {
             builder.set_color(Magenta);
@@ -142,7 +142,7 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
             println!("{}", timestamp);
             builder.line(12,
                          20,
-                         Ty::Custom(/*chrono::Utc.timestamp(timestamp as i64, 0)*/
+                         Ty::Custom(/*chrono::Utc.timestamp(timestamp as i64, 0)).to_rfc2822()*/
                                     "".to_string()),
                          "timestamp");
             builder.line(20, 24, Ty::LeNum, "cap len");
