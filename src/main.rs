@@ -96,17 +96,23 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
             builder.line(4, Ty::LeNum, "snap num");
             builder.set_color(Yellow);
 
-            /*let mut offset = 16 as usize;
+            let mut offset = 16 as usize;
             for i in 0.. {
                 let opt1_type_num = LittleEndian::read_u16(&buf[offset..offset + 2]);
                 let opt1_type = match opt1_type_num {
+                    0 => "end of opts",
                     2 => "name",
                     3 => "descr",
                     4 => "ipv4 addr",
                     5 => "ipv6 addr",
-                    _ => "",
+                    12 => "OS",
+                    _ => {
+                        builder.set_color(Red);
+                        "<unknown>"
+                    },
                 };
-                builder.line(offset, offset + 2, Ty::custom(opt1_type), format!("opt{} code", i));
+                builder.line(2, Ty::Custom(format!("{} ({})", opt1_type, opt1_type_num)), format!("opt{} type", i));
+                builder.set_color(Yellow);
 
                 let opt1_len = LittleEndian::read_u16(&buf[offset + 2..offset + 4]) as usize;
                 let opt1_len = opt1_len +
@@ -117,21 +123,23 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                                    3 => 1,
                                    _ => unreachable!(),
                                };
-                let opt1_len = match opt1_type_num {
+                let opt1_len_adapted = match opt1_type_num {
+                    0 => 0, // end of opts
                     4 => 8,
                     5 => 17,
                     6 => 6,
                     7 => 8,
                     _ => opt1_len,
                 };
-                builder.line(offset + 2, offset + 4, Ty::LeNum, format!("opt{}  len", i));
-                builder.line(offset + 4, offset + 4 + opt1_len, Ty::Ascii, format!("opt{} code", i));
+                assert_eq!(opt1_len, opt1_len_adapted, "Opt len is wrong");
+                builder.line(2, Ty::LeNum, format!("opt{}  len", i));
+                builder.line(opt1_len, Ty::Ascii, format!("opt{} data", i));
                 offset += 4 + opt1_len;
-                if offset >= buf.len() - 2 {
+                if offset >= buf.len() - 4 {
                     break;
                 }
                 //break;
-            }*/
+            }
             builder.line_until(buf.len() - 4, Ty::Ascii, "options");
         }
         0x6 => {
@@ -156,9 +164,13 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                 0x22EA => "Stream Reservation Protocol",
                 0x6003 => "DECnet phase IV",
                 0x86DD => "IPv6",
-                _ => "",
+                _ => {
+                    builder.set_color(Red);
+                    "<unknown>"
+                },
             };
-            builder.line(2, Ty::custom(eth_type), "eth type");
+            builder.line(2, Ty::Custom(format!("{} ({})", eth_type, eth_type_num)), "eth type");
+            builder.set_color(Magenta);
 
             if eth_type_num == 0x0800 {
                 builder.set_color(Cyan);

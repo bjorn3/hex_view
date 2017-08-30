@@ -98,6 +98,7 @@ impl<'a> StyleBuilder<'a> {
     pub fn index(&self) -> usize { self.index }
     
     pub fn line<S: Into<String>>(&mut self, len: usize, ty: Ty, tag: S) {
+        assert!(self.index + len <= self.buf.len(), "Too big len {} exceeds buf len {} (index {})", len, self.buf.len(), self.index);
         self.childs.insert(
             (self.index, self.index + len),
             Segment {
@@ -110,6 +111,7 @@ impl<'a> StyleBuilder<'a> {
     }
     
     pub fn line_until<S: Into<String>>(&mut self, end: usize, ty: Ty, tag: S) {
+        assert!(self.index <= end, "Index {} bigger than end {}", self.index, end);
         self.childs.insert(
             (self.index, end),
             Segment {
@@ -176,18 +178,14 @@ impl TermPrinter {
         assert!(buf.len() <= 32);
         let mut num = 0;
         for b in buf.iter() {
-            if num == 16 {
-                print!("  ");
-            } else if num % 8 == 0 {
+            if num % 8 == 0 {
                 print!(" ");
             }
             num += 1;
             print!("{:02X} ", b);
         }
         while num < 32 {
-            if num == 16 {
-                print!("  ");
-            } else if num % 8 == 0 {
+            if num % 8 == 0 {
                 print!(" ");
             }
             num += 1;
@@ -206,6 +204,9 @@ impl TermPrinter {
                 let mut text = String::with_capacity(40);
                 for (i, c) in text_iter {
                     text.push(c);
+                    if c == '�' {
+                        text.push(' ');
+                    }
                     if (i + 1) % 8 == 0 {
                         text.push(' ');
                     }
@@ -213,7 +214,7 @@ impl TermPrinter {
                         text.push(' ');
                     }
                 }
-                print!("|{}|", text)
+                print!("| {}|", text)
             }
             Ty::Binary => {}
             Ty::BeNum => {
@@ -229,21 +230,12 @@ impl TermPrinter {
     }
 
     fn print_segment(buf: &[u8], s: Segment) {
-        fn print_color_for_ty(ty: &Ty) {
-            match *ty {
-                Ty::Ascii => print!("{}", Fg(Magenta)),
-                Ty::Binary => print!("{}", Fg(Reset)),
-                Ty::BeNum | Ty::LeNum => print!("{}", Fg(Cyan)),
-                Ty::Custom(_) => print!("{}", Fg(Yellow)),
-            }
-        }
         use std::cmp::Ord;
 
         if s.childs.is_empty() {
             for c in buf.iter().chunks(32).into_iter() {
                 let chunk = c.cloned().collect::<Vec<u8>>();
-                //print_color_for_ty(&s.ty);
-                
+
                 match s.kind {
                     SegmentKind::Line { ref tag, color } => {
                         match color {
