@@ -28,6 +28,7 @@ pub enum Ty {
     Binary,
     BeNum,
     LeNum,
+    Ip4,
     Custom(String),
 }
 
@@ -185,6 +186,9 @@ impl TermPrinter {
             print!("{:02X} ", b);
         }
         while num < 32 {
+            if num == 16 || num == 24 {
+                break;
+            }
             if num % 8 == 0 {
                 print!(" ");
             }
@@ -223,8 +227,16 @@ impl TermPrinter {
             Ty::LeNum => {
                 print!(": {}", read_num::<LittleEndian>(chunk));
             }
+            Ty::Ip4 => {
+                assert!(chunk.len() == 4, "Wrong len for ipv4 addr");
+                print!("{}.{}.{}.{}", chunk[0], chunk[1], chunk[2], chunk[3]);
+            }
             Ty::Custom(ref custom) => {
-                print!("; {}", custom);
+                let num = match chunk.len() {
+                    1 | 2 | 4 | 8 => Some(read_num::<LittleEndian>(chunk)),
+                    _ => None,
+                };
+                print!("; {} ({})", custom, num.map(|n|n.to_string()).as_ref().map(|s|s as &str).unwrap_or(""));
             }
         }
     }

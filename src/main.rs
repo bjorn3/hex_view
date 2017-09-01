@@ -105,13 +105,14 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                     3 => "descr",
                     4 => "ipv4 addr",
                     5 => "ipv6 addr",
+                    9 => "tmstamp res",
                     12 => "OS",
                     _ => {
                         builder.set_color(Red);
                         "<unknown>"
                     },
                 };
-                builder.line(2, Ty::Custom(format!("{} ({})", opt1_type, opt1_type_num)), format!("opt{} type", i));
+                builder.line(2, Ty::custom(opt1_type), format!("opt{} type", i));
                 builder.set_color(Yellow);
 
                 let opt1_len = LittleEndian::read_u16(&buf[offset + 2..offset + 4]) as usize;
@@ -121,6 +122,7 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                                    1 => 3,
                                    2 => 2,
                                    3 => 1,
+                                   9 => 1,
                                    _ => unreachable!(),
                                };
                 let opt1_len_adapted = match opt1_type_num {
@@ -169,7 +171,7 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                     "<unknown>"
                 },
             };
-            builder.line(2, Ty::Custom(format!("{} ({})", eth_type, eth_type_num)), "eth type");
+            builder.line(2, Ty::custom(eth_type), "eth type");
             builder.set_color(Magenta);
 
             if eth_type_num == 0x0800 {
@@ -184,24 +186,12 @@ fn pcapng_block_styler(mut builder: StyleBuilder) {
                 let proto = match proto_num {
                     0x06 => "TCP",
                     0x11 => "UDP",
-                    _ => "",
+                    _ => "<unknown>",
                 };
                 builder.line(1, Ty::custom(proto), "Proto");
                 builder.line(2, Ty::Binary, "Header Checksum");
-                builder.line(4,
-                             Ty::Custom(format!("{}.{}.{}.{}",
-                                                buf[54],
-                                                buf[55],
-                                                buf[56],
-                                                buf[57])),
-                             "src IP");
-                builder.line(4,
-                             Ty::Custom(format!("{}.{}.{}.{}",
-                                                buf[58],
-                                                buf[59],
-                                                buf[60],
-                                                buf[61])),
-                             "dst IP");
+                builder.line(4, Ty::Ip4, "src IP");
+                builder.line(4, Ty::Ip4, "dst IP");
                 match proto_num {
                     0x06 => {
                         builder.set_color(Yellow);
