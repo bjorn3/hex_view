@@ -95,9 +95,9 @@ impl<'a> StyleBuilder<'a> {
             index: 0,
         }
     }
-    
+
     pub fn index(&self) -> usize { self.index }
-    
+
     pub fn line<S: Into<String>>(&mut self, len: usize, ty: Ty, tag: S) {
         assert!(self.index + len <= self.buf.len(), "Too big len {} exceeds buf len {} (index {})", len, self.buf.len(), self.index);
         self.childs.insert(
@@ -110,7 +110,7 @@ impl<'a> StyleBuilder<'a> {
         );
         self.index += len;
     }
-    
+
     pub fn line_until<S: Into<String>>(&mut self, end: usize, ty: Ty, tag: S) {
         assert!(self.index <= end, "Index {} bigger than end {}", self.index, end);
         self.childs.insert(
@@ -292,7 +292,7 @@ impl TermPrinter {
     }
 }
 
-/*pub struct HtmlPrinter {
+pub struct HtmlPrinter {
     buf: Vec<u8>,
     main: Segment,
 }
@@ -303,7 +303,6 @@ impl HtmlPrinter {
             buf: buf,
             main: Segment {
                 ty: Ty::Ascii,
-                tag: "".to_string(),
                 kind: SegmentKind::Main,
                 childs: HashMap::new(),
             },
@@ -313,7 +312,9 @@ impl HtmlPrinter {
     pub fn style_builder(&mut self) -> StyleBuilder {
         StyleBuilder {
             buf: &*self.buf,
-            seg: &mut self.main,
+            childs: &mut self.main.childs,
+            part_color: Color::White,
+            index: 0,
         }
     }
 
@@ -329,7 +330,7 @@ impl HtmlPrinter {
             _ => '�',
         }
     }
-    
+
     fn print_hex_line(buf: &[u8]) {
         assert!(buf.len() <= 32);
         print!("<code class='hex'>");
@@ -345,7 +346,7 @@ impl HtmlPrinter {
         }
         print!("</code>");
     }
-    
+
     fn print_extras(chunk: &[u8], seg: &Segment) {
         print!("<code>");
         match seg.ty {
@@ -388,36 +389,53 @@ impl HtmlPrinter {
                 };
                 print!(": {}", num);
             }
+            Ty::Ip4 => {
+                print!("{}.{}.{}.{}", chunk[0], chunk[1], chunk[2], chunk[3]);
+            }
             Ty::Custom(ref custom) => {
                 print!("; {}", custom);
             }
         }
         print!("</code>");
     }
-    
+
     fn print_segment(buf: &[u8], s: Segment) {
         use std::cmp::Ord;
 
+        print!("<div>");
         if s.childs.is_empty() {
             for c in buf.iter().chunks(32).into_iter() {
                 let chunk = c.cloned().collect::<Vec<u8>>();
-                //match s.ty {
-                //    Ty::Ascii => print!("{}", Fg(Magenta)),
-                //    Ty::Binary => print!("{}", Fg(Reset)),
-                //    Ty::BeNum | Ty::LeNum => print!("{}", Fg(Cyan)),
-                //    Ty::Custom(_) => print!("{}", Fg(Yellow)),
-                //}
-                print!("<div class='line' style='color: {}'>", match s.ty {
-                    Ty::Ascii => "magenta",
-                    Ty::Binary => "",
-                    Ty::BeNum | Ty::LeNum => "cyan",
-                    Ty::Custom(_) => "yellow",
-                });
-                HtmlPrinter::print_hex_line(&chunk);
-                print!("<span>  {:>8} </span>", s.tag);
-                HtmlPrinter::print_extras(&chunk, &s);
-                println!("</div>");
-                //print!("{}", Fg(Reset));
+                match s.kind {
+                    SegmentKind::Line { ref tag, color } => {
+                        print!("<div class='line' style='color: {}'>", match color {
+                            Color::Blue => "blue",
+                            Color::Cyan => "cyan",
+                            Color::Green => "green",
+                            Color::Magenta => "magenta",
+                            Color::Red => "red",
+                            Color::Yellow => "yellow",
+                            Color::White => "white",
+                        });
+                        HtmlPrinter::print_hex_line(&chunk);
+                        print!("<span>  {:>8} </span>", tag);
+                        HtmlPrinter::print_extras(&chunk, &s);
+                        println!("</div>");
+                    }
+                    _ => {
+                        print!("<div class='line' style='color: {}'>", match s.ty {
+                            Ty::Ascii => "magenta",
+                            Ty::Binary => "",
+                            Ty::BeNum | Ty::LeNum => "cyan",
+                            Ty::Ip4 => "green",
+                            Ty::Custom(_) => "yellow",
+                        });
+                        HtmlPrinter::print_hex_line(&chunk);
+                        print!("<span>           </span>");
+                        HtmlPrinter::print_extras(&chunk, &s);
+                        println!("</div>");
+                    }
+                }
             }
         } else {
             let mut segments = s.childs.into_iter().collect::<Vec<_>>();
@@ -428,48 +446,48 @@ impl HtmlPrinter {
                 HtmlPrinter::print_segment(buf, seg.clone());
                 match seg.kind {
                     SegmentKind::Header | SegmentKind::Block => println!("<br>"),
-                    SegmentKind::Line => {}
+                    SegmentKind::Line { .. } => {}
                     SegmentKind::Main => panic!(),
                 }
             }
         }
+        print!("</div>");
     }
 
     pub fn print(mut self) {
         println!("<html>
-        <head>
-        <meta charset=\"utf-8\">
-        <style>
-body {{
-    width: 2000px;
-    font-family: monospace;
-    font-size: 15px;
-    background: black;
-    color: yellowgreen;
-}}
-.line {{
-    white-space: pre;
-}}
-.hex {{
-    display: inline-block;
-    width: 900px;
-}}
-        </style>
-        </head>
-        <body>");
+<head>
+<meta charset=\"utf-8\">
+<style>
+    body {{
+        width: 100vw;
+        font-family: monospace;
+        font-size: 15px;
+        background: black;
+        color: yellowgreen;
+    }}
+    code {{
+        white-space: pre;
+        margin-right: 10px;
+    }}
+    .hex {{
+        display: inline-block;
+        width: 900px;
+    }}
+</style>
+</head>
+<body>");
         HtmlPrinter::print_segment(
             &self.buf,
             std::mem::replace(
                 &mut self.main,
                 Segment {
                     ty: Ty::Ascii,
-                    tag: "".to_string(),
                     kind: SegmentKind::Main,
                     childs: HashMap::new(),
                 },
             ),
         );
-        println!("</body>
-        </html>");
+        println!("</body>\n</html>");
     }
-}*/
+}

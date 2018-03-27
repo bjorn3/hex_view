@@ -22,13 +22,13 @@ fn main() {
             .expect("File not found");
     file.read_to_end(&mut buf).unwrap();
 
-    let mut term_printer = TermPrinter::new(buf);
+    let mut term_printer = TermPrinter::new(buf.clone());
     pcapng_styler(term_printer.style_builder());
     term_printer.print();
 
-    //let mut html_printer = HtmlPrinter::new(buf);
-    //pcapng_styler(html_printer.style_builder());
-    //html_printer.print();
+    let mut html_printer = HtmlPrinter::new(buf);
+    pcapng_styler(html_printer.style_builder());
+    html_printer.print();
 }
 
 fn pcapng_styler(mut builder: StyleBuilder) {
